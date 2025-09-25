@@ -1,0 +1,17 @@
+```{r}
+comeco <- proc.time()
+read.csv("flights.csv")
+final <- proc.time()
+tempo <- final - comeco
+print(tempo)
+
+library(readr)
+comeco2 <- proc.time()
+read.csv("flights.csv")
+final2 <- proc.time()
+tempo2 <- final2 - comeco2
+print(tempo2)
+
+
+```
+
