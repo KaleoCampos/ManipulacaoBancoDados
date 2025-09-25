@@ -1,0 +1,107 @@
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+
+library(DBI)
+library(RSQLite)
+
+# Combina o caminho da pasta com o nome do arquivo
+fname <- "disco.db"
+
+# Conecta-se ao banco de dados
+conn <- dbConnect(SQLite(), fname)
+
+#3 - Listar tabelas
+dbListTables(conn)
+
+#4 - Mostrar colunas da tabela Customers
+dbListFields(conn, "customers")
+
+#5 Quantidade de clientes atualmente cadastrados neste banco de dados
+dbGetQuery(conn, "SELECT COUNT(DISTINCT CustomerId) AS n FROM customers")
+
+#6 Identificar o número de países diferentes em que moram os clientes encontrados
+dbGetQuery(conn, "SELECT COUNT(DISTINCT Country) FROM customers")
+
+#7 Quantos clientes existem por país? 
+dbGetQuery(conn, "SELECT Country, COUNT(CustomerId) AS Clients
+                  FROM customers
+                  GROUP BY Country
+                  ORDER BY Clients DESC")
+
+#8 Quais são os 5 países com mais clientes registrados?
+dbGetQuery(conn, "SELECT Country, COUNT(CustomerId) AS Clients
+                  FROM customers
+                  GROUP BY Country
+                  ORDER BY Clients DESC
+                  LIMIT 5")
+
+#9 Quais são os países registrados que possuem apenas 6 letras no nome?
+dbGetQuery(conn, "SELECT DISTINCT Country FROM Customers
+                  WHERE LENGTH(COUNTRY) = 6")
+
+#10 Quais foram as músicas compradas por clientes brasileiros?
+dbGetQuery(conn, "SELECT DISTINCT tracks.Name FROM tracks
+                  INNER JOIN invoice_items
+                  ON tracks.trackid = invoice_items.trackid
+                  INNER JOIN invoices
+                  ON invoice_items.invoiceid = invoices.invoiceid
+                  INNER JOIN customers
+                  ON invoices.customerid = customers.customerid
+                  WHERE Country = 'Brazil'")
+# Qual o álbum mais tocado por país?
+dbGetQuery(conn, "
+  WITH AlbumPlays AS (
+    SELECT c.Country,
+           a.Title AS Album,
+           COUNT(ii.Quantity) AS TotalPlays
+    FROM customers c
+    JOIN invoices i      ON c.CustomerId = i.CustomerId
+    JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+    JOIN tracks t        ON ii.TrackId = t.TrackId
+    JOIN albums a        ON t.AlbumId = a.AlbumId
+    GROUP BY c.Country, a.AlbumId
+  ),
+  Ranked AS (
+    SELECT Country, Album, TotalPlays,
+           RANK() OVER (PARTITION BY Country ORDER BY TotalPlays DESC) AS rk
+    FROM AlbumPlays
+  )
+  SELECT Country, Album, TotalPlays
+  FROM Ranked
+  WHERE rk = 1
+  ORDER BY Country;
+")
+
+# Qual o artista mais tocado por país?
+dbGetQuery(conn, "
+  WITH ArtistPlays AS (
+    SELECT c.Country,
+           ar.Name AS Artist,
+           COUNT(ii.Quantity) AS TotalPlays
+    FROM customers c
+    JOIN invoices i      ON c.CustomerId = i.CustomerId
+    JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+    JOIN tracks t        ON ii.TrackId = t.TrackId
+    JOIN albums a        ON t.AlbumId = a.AlbumId
+    JOIN artists ar      ON a.ArtistId = ar.ArtistId
+    GROUP BY c.Country, ar.ArtistId
+  ),
+  Ranked AS (
+    SELECT Country, Artist, TotalPlays,
+           RANK() OVER (PARTITION BY Country ORDER BY TotalPlays DESC) AS rk
+    FROM ArtistPlays
+  )
+  SELECT Country, Artist, TotalPlays
+  FROM Ranked
+  WHERE rk = 1
+  ORDER BY Country;
+")
+
+#11 Desconecte do banco de dados.
+dbDisconnect(conn)
+```
+
