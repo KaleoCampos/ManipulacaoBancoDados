@@ -1,0 +1,102 @@
+*Relatório gerado em: `r format(Sys.time(), '%d de %B de %Y, às %H:%M:%S')`*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(readr)
+library(RSQLite)
+library(DBI)
+library(dplyr)
+
+
+# 1. Configuração e Conexão ao Banco de Dados SQLite
+db_file <- "voos_sqlite.db"
+con <- dbConnect(RSQLite::SQLite(), dbname = db_file)
+message(paste("Conexão ao banco de dados", db_file, "estabelecida com sucesso."))
+
+# 2. Depósito de Arquivos Pequenos
+message("\nCarregando e preparando tabelas auxiliares (AIRLINE_NAME e AIRPORT_NAME)...")
+
+# Prepara airlines
+airlines_data_prepped <- read_csv("airlines.csv", show_col_types = FALSE) %>%
+  rename(AIRLINE_NAME = AIRLINE)
+dbWriteTable(con, "airlines", airlines_data_prepped, overwrite = TRUE)
+
+# Prepara airports
+airports_data_prepped <- read_csv("airports.csv", show_col_types = FALSE) %>%
+  rename(AIRPORT_NAME = AIRPORT)
+dbWriteTable(con, "airports", airports_data_prepped, overwrite = TRUE)
+
+message("Tabelas auxiliares carregadas com nomes de coluna únicos.")
+
+
+# 3.e 4. Processamento em Chunks de flights.csv
+if (dbExistsTable(con, "flights")) { dbRemoveTable(con, "flights") } # Limpa tabela anterior
+
+chunk_tamanho <- 100000 
+message(paste("\nProcessando flights.csv em chunks de", chunk_tamanho, "linhas (Atividade 3 e 4)..."))
+
+# Função de callback para depositar cada chunk, selecionando colunas
+insert_chunk_to_db <- function(chunk, pos) {
+  message(paste0("Processando linhas: ", pos, " - ", pos + nrow(chunk) - 1))
+  
+  chunk_filtrado <- chunk %>%
+    select(YEAR, MONTH, DAY, AIRLINE, FLIGHT_NUMBER, ORIGIN_AIRPORT, DESTINATION_AIRPORT, ARRIVAL_DELAY)
+  
+  # dbWriteTable: Anexa o chunk na tabela 'flights'
+  dbWriteTable(con, "flights", chunk_filtrado, append = TRUE, row.names = FALSE)
+  return(NULL)
+}
+
+# Leitura e depósito em chunks
+read_csv_chunked(
+  file = "flights.csv", 
+  callback = SideEffectChunkCallback$new(insert_chunk_to_db), 
+  chunk_size = chunk_tamanho,
+  col_types = cols(.default = "c"), 
+  guess_max = 0, 
+  show_col_types = FALSE
+)
+message("Depósito do arquivo flights.csv concluído.")
+
+
+# 5. Consulta e Análise Corrigida (Média de atraso por Aeroporto de Destino e Companhia Aérea)
+message("\nExecutando a consulta de média de atraso (Atividade 5)...")
+
+flights_db <- tbl(con, "flights")
+airlines_db <- tbl(con, "airlines")
+airports_db <- tbl(con, "airports")
+
+resultado_analise <- flights_db %>%
+  # 1. Agrupar e calcular a média de atraso
+  group_by(DESTINATION_AIRPORT, AIRLINE) %>%
+  summarise(
+    avg_arr_delay = mean(as.numeric(ARRIVAL_DELAY), na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  # 2. JOIN com AIRLINES
+  left_join(airlines_db, by = c("AIRLINE" = "IATA_CODE")) %>%
+  
+  # 3. JOIN com AIRPORTS
+  left_join(airports_db, by = c("DESTINATION_AIRPORT" = "IATA_CODE")) %>%
+  
+  # 4. Selecionar e ordenar as colunas com os nomes finais
+  select(AIRPORT_NAME, AIRLINE_NAME, avg_arr_delay) %>%
+  
+  # 5. Ordenar decrescentemente (Pior atraso primeiro)
+  arrange(desc(avg_arr_delay))
+
+# Mostra o resultado (os 5 piores atrasos)
+print("Resultado: Companhias e Aeroportos com os 5 Maiores Atrasos Médios (Atraso médio em minutos):")
+resultado_analise %>%
+  head(5) %>%
+  collect() %>% 
+  print()
+
+# 6. Desconectar
+dbDisconnect(con)
+message("\nConexão ao banco de dados desconectada. Laboratório concluído.")
+```
+
