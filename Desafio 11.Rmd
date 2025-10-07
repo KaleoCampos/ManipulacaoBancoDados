@@ -1,0 +1,181 @@
+*Relatório gerado em: `r format(Sys.time(), '%d de %B de %Y, às %H:%M:%S')`*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(broom)
+
+# Nomes das colunas
+col_names <- c(
+  "age", "workclass", "fnlgt", "education", "education_num",
+  "marital_status", "occupation", "relationship", "race", "sex",
+  "capital_gain", "capital_loss", "hours_per_week", "native_country", "income"
+)
+
+```
+
+```{r}
+file_path <- "renda_adulta.csv"
+
+# Leitura com readr
+df <- read_csv(
+  file = file_path,
+  col_names = col_names,
+  na = c("?", " ?"),
+  trim_ws = TRUE,
+  show_col_types = FALSE
+)
+
+df <- df %>%
+  mutate(across(everything(), ~ if(is.character(.)) str_trim(.) else .)) %>%
+  mutate(income = str_replace_all(income, "\\.", "")) 
+
+df <- df %>%
+  mutate(
+    age = as.integer(age),
+    fnlgt = as.integer(fnlgt),
+    education_num = as.integer(education_num),
+    capital_gain = as.numeric(capital_gain),
+    capital_loss = as.numeric(capital_loss),
+    hours_per_week = as.numeric(hours_per_week)
+  )
+
+```
+
+```{r}
+#Q2
+sapply(df, class) %>% print()
+tibble(column = names(df), class = sapply(df, function(x) paste(class(x), collapse = ","))) %>% print()
+
+```
+
+```{r}
+#Q3
+dim(df)     
+glimpse(df) 
+
+```
+
+```{r}
+#Q4
+# Normalizar o rótulo 
+df <- df %>% mutate(income = case_when(
+  str_detect(income, ">50") ~ ">50K",
+  str_detect(income, "<=50|<=50K|<=50k|<=50 K|<=50") ~ "<=50K",
+  TRUE ~ income
+))
+
+table_income <- df %>% count(income)
+print(table_income)
+
+# Número de pessoas com >50K:
+n_gt_50k <- sum(df$income == ">50K", na.rm = TRUE)
+n_le_50k <- sum(df$income != ">50K" & !is.na(df$income), na.rm = TRUE)
+cat(">", n_gt_50k, "pessoas com >50K\n")
+cat("<=", n_le_50k, "pessoas com <=50K\n")
+
+```
+```{r}
+#Q5
+renda_longo <- df %>%
+  select(-fnlgt) %>% #remover colunas que não interessam
+  pivot_longer(
+    cols = c(capital_gain, capital_loss),
+    names_to = "tipo",
+    values_to = "Valor"
+  ) %>%
+  mutate(tipo = case_when(
+    tipo == "capital_gain" ~ "gain",
+    tipo == "capital_loss" ~ "loss",
+    TRUE ~ tipo
+  ))
+
+# Visualizar as primeiras linhas
+head(renda_longo)
+# Verificar contagem por tipo
+renda_longo %>% group_by(tipo) %>% summarise(n = n(), media_valor = mean(Valor, na.rm=TRUE))
+
+```
+
+```{r}
+#Q6
+media_horas_por_renda <- df %>%
+  filter(!is.na(income)) %>%
+  group_by(income) %>%
+  summarise(
+    n = n(),
+    mean_hours = mean(hours_per_week, na.rm = TRUE),
+    sd_hours = sd(hours_per_week, na.rm = TRUE)
+  )
+print(media_horas_por_renda)
+
+```
+
+```{r}
+#Q7
+pessoas_por_occupation <- df %>%
+  group_by(occupation) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n))
+
+print(pessoas_por_occupation)
+
+```
+
+```{r}
+#Q8
+media_horas_por_educ <- df %>%
+  filter(!is.na(education)) %>%
+  group_by(education) %>%
+  summarise(mean_hours = mean(hours_per_week, na.rm = TRUE), n = n()) %>%
+  arrange(mean_hours)
+
+# Plot 
+ggplot(media_horas_por_educ, aes(x = reorder(education, mean_hours), y = mean_hours)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Média de horas trabalhadas por semana por nível de educação",
+    x = "Nível de educação",
+    y = "Média de horas por semana"
+  ) +
+  theme_minimal()
+
+```
+```{r}
+#Q9
+# Preparar variável binária income_bin = 1 para >50K, 0 caso contrário
+df <- df %>% mutate(income_bin = case_when(income == ">50K" ~ 1, TRUE ~ 0))
+
+# Tabela cruzada sex x income_bin
+tab <- table(df$sex, df$income_bin, useNA = "ifany")
+tab
+prop.table(tab, 1)  # proporções por sexo
+
+# Teste qui-quadrado de independência
+chi <- chisq.test(tab)
+chi
+
+# Regressão logística (ajustando por educação, horas, idade e ocupação)
+model <- glm(income_bin ~ sex + education_num + hours_per_week + age + occupation + race,
+             data = df,
+             family = binomial(link = "logit"))
+
+summary(model)
+# Coeficientes em OR 
+exp_coef <- exp(coef(model))
+exp_coef
+
+# Tabela com estimativas e p-valores
+library(broom)
+tidy(model, exponentiate = TRUE, conf.int = TRUE) %>% print()
+
+```
+
