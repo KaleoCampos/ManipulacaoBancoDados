@@ -1,0 +1,143 @@
+*Relatório gerado em: `r format(Sys.time(), '%d de %B de %Y, às %H:%M:%S')`*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(RSQLite)
+library(data.table)
+library(R.utils)
+
+#Questão 1
+
+# Define o nome do arquivo do banco de dados
+db_file <- "movies_R.sqlite3"
+
+# Remove o banco de dados antigo, se existir
+if (file.exists(db_file)) {
+  file.remove(db_file)
+  cat("Banco de dados antigo removido.\n")
+}
+
+# Conecta ao banco de dados 
+con <- dbConnect(RSQLite::SQLite(), db_file)
+cat("Conexão com o novo banco de dados estabelecida.\n")
+
+
+# Lista de arquivos para carregar no banco de dados
+files_to_load <- list(
+  basics     = "title.basics0.tsv.gz",
+  ratings    = "title.ratings.tsv.gz",
+  principals = "title.principals0.tsv.gz"
+)
+
+# Loop para ler cada arquivo e gravá-lo no banco de dados
+for (table_name in names(files_to_load)) {
+  file_path <- files_to_load[[table_name]]
+  cat(paste0("Processando arquivo '", file_path, "' para a tabela '", table_name, "'...\n"))
+  
+  # Lê o arquivo .tsv.gz de forma eficiente usando data.table::fread
+  dt <- fread(file_path)
+  
+  # Escreve o data.table para a tabela correspondente no SQLite
+  dbWriteTable(con, table_name, dt, overwrite = TRUE)
+  
+  cat(paste0("Tabela '", table_name, "' criada com sucesso.\n"))
+}
+
+#Questão 2
+
+query2 <- "
+SELECT
+    b.primaryTitle AS Titulo,
+    r.averageRating AS NotaMedia,
+    r.numVotes AS NumeroDeVotos
+FROM
+    basics AS b
+JOIN
+    ratings AS r ON b.tconst = r.tconst
+WHERE
+    b.titleType = 'movie'
+ORDER BY
+    NotaMedia DESC,
+    NumeroDeVotos DESC
+LIMIT 5;
+"
+
+# Executa a query e busca os resultados
+top_5_filmes <- dbGetQuery(con, query2)
+
+# Exibe o resultado
+print(top_5_filmes)
+
+#Questão 3
+
+# 1. Busca os gêneros dos filmes com nota maior que 8
+query3_data <- "
+SELECT
+    b.genres
+FROM
+    basics AS b
+JOIN
+    ratings AS r ON b.tconst = r.tconst
+WHERE
+    b.titleType = 'movie' AND r.averageRating > 8;
+"
+generos_df <- dbGetQuery(con, query3_data)
+
+# 2. Processa os dados em R
+generos_validos <- na.omit(generos_df$genres)
+
+# Divide as strings de gênero que contêm vírgulas
+lista_de_generos <- strsplit(generos_validos, ",")
+
+# Transforma a lista de listas em um único vetor de gêneros
+vetor_de_generos <- unlist(lista_de_generos)
+
+# Cria uma tabela de frequência para contar cada gênero
+frequencia_generos <- table(vetor_de_generos)
+
+# Ordena a tabela em ordem decrescente
+generos_ordenados <- sort(frequencia_generos, decreasing = TRUE)
+
+# Pega o gênero mais frequente (o primeiro da lista ordenada)
+genero_mais_frequente <- names(generos_ordenados)[1]
+contagem <- generos_ordenados[1]
+
+cat(paste0("O gênero mais frequente para filmes com nota > 8 é: '", genero_mais_frequente, "'\n"))
+cat(paste0("Ele aparece ", contagem, " vezes.\n"))
+
+#Questão 4
+
+query4 <- "
+SELECT
+    p.nconst AS ID_Ator_Atriz,
+    COUNT(p.tconst) AS NumeroDeFilmes
+FROM
+    principals AS p
+JOIN
+    ratings AS r ON p.tconst = r.tconst
+JOIN
+    basics AS b ON p.tconst = b.tconst
+WHERE
+    (p.category = 'actor' OR p.category = 'actress')
+    AND r.averageRating > 7.5
+    AND b.titleType = 'movie'
+GROUP BY
+    p.nconst
+ORDER BY
+    NumeroDeFilmes DESC
+LIMIT 3;
+"
+
+# Executa a query e busca os resultados
+top_3_atores <- dbGetQuery(con, query4)
+
+# Exibe o resultado
+print(top_3_atores)
+
+# Fecha a conexão com o banco de dados
+dbDisconnect(con)
+```
+
