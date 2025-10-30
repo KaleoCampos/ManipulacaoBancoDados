@@ -1,0 +1,65 @@
+```{r}
+hora_atual <- Sys.time()
+
+cat("Este código foi executado em:", format(hora_atual, "%d/%m/%Y %H:%M:%S"), "\n")
+
+library(tidyverse)
+#1.
+
+# Ler os dados do CSV.
+diamonds <- read_csv("https://me315-unicamp.github.io/dados/diamonds.csv.gz")
+
+glimpse(diamonds)
+
+#2.
+
+# Os achados, visíveis no gráfico da próxima atividade, mostram uma associação positiva e não linear entre o peso (carat) e o preço (price). Fica claro que à medida que o peso do diamante aumenta, seu preço cresce de forma exponencial. A principal ação tomada para garantir a qualidade do gráfico foi lidar com a imensa sobreposição de pontos , já que o conjunto de dados é grande. Para isso, foi utilizada a transparência (alpha = 0.2) nos pontos. Esta ação permite visualizar melhor as áreas de maior densidade de diamantes, revelando que a maioria dos diamantes se concentra na faixa de baixo peso e baixo preço.
+
+#3.
+print(
+  ggplot(diamonds, aes(x = carat, y = price, color = cut)) + 
+    geom_point(alpha = 0.2) + 
+    labs(title = "Relação preço/carats") + 
+    theme_bw() +
+    facet_wrap(~ cut) 
+)
+
+diamonds <- diamonds %>%
+  mutate(
+    cut = factor(cut, levels = c("Fair", "Good", "Very Good", "Premium", "Ideal")),
+    color = factor(color, levels = c("J", "I", "H", "G", "F", "E", "D")),
+    clarity = factor(clarity, levels = c("I1", "SI2", "SI1", "VS2", "VS1", "VVS2", "VVS1", "IF"))
+  )
+
+glimpse(diamonds)
+
+# Sim, a relação fundamental é a mesma: em todos os cinco tipos de corte, existe uma associação positiva forte onde diamantes mais pesados (carat) são mais caros (price). A visualização demonstra isso eficientemente ao usar facet_wrap(~ cut). Esta técnica cria um "pequeno múltiplo" para cada tipo de corte, permitindo uma comparação lado a lado. A conclusão é que, embora o corte seja uma variável de qualidade importante, a relação exponencial entre peso e preço é uma característica universal que persiste em todos os grupos de corte, do "Fair" (Justo) ao "Ideal".
+
+#4.
+
+print(
+  ggplot(diamonds, aes(x = carat, y = price, color = color, shape = clarity)) + 
+    geom_point(alpha = 0.2) + 
+    labs(title = "Relação preço/carats") +
+    theme_bw() +
+    facet_wrap(~ cut)
+)
+print(
+  ggplot(diamonds, aes(x = carat, y = price, color = color)) + 
+    geom_point(alpha = 0.2) + 
+    labs(title = "Relação preço/carats") +
+    theme_bw() +
+    facet_grid(cut ~ clarity)
+)
+print(
+  ggplot(diamonds, aes(x = carat, y = price, color = clarity)) + 
+    labs(title = "Relação preço/carats") +
+    theme_bw() +
+    geom_smooth(method = "lm", se = FALSE) + # se = FALSE (maiúsculo)
+    facet_grid(cut ~ color) # Fórmula: linhas ~ colunas
+)
+
+# A principal dificuldade foi a alta dimensionalidade dos dados. Tentar mostrar a relação entre duas variáveis numéricas (carat, price) e três categóricas (cut, color, clarity) simultaneamente é um desafio, pois cria centenas de subgrupos (5 cortes $\times$ 7 cores $\times$ 8 clarezas = 280 combinações). Tentar plotar todos os pontos individuais resultaria em um gráfico ilegível e sobrecarregado.A solução encontrada foi dupla: (1) em vez de pontos, foram plotadas apenas as linhas de tendência (geom_smooth) para resumir a relação em cada subgrupo. (2) Foi usada uma grade de facetas facet_grid(cut ~ color), que organiza os cortes nas linhas e as cores nas colunas. A terceira variável categórica, clarity, foi mapeada à estética color (cor da linha). Sim, a relação entre preço e peso é fundamentalmente a mesma para todas as configurações de diamante. O gráfico de grade mostra que em todos os painéis, as linhas de tendência são inclinadas para cima, confirmando a relação positiva. Mais do que isso, o gráfico nos permite ver que, dentro de qualquer painel, as linhas para clareza melhor estão quase sempre acima das linhas para clareza pior. Isso prova que, mantendo os outros fatores constantes, diamantes de melhor qualidade são, de fato, mais caros.
+
+```
+
